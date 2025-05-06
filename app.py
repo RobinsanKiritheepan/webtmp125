@@ -26,6 +26,7 @@ def index():
             body {
                 font-family: 'Segoe UI', sans-serif;
                 background: #0f0f0f;
+                color: #fff;
             }
             .card-gradient {
                 background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
@@ -41,6 +42,10 @@ def index():
                 background: #1a1a1a;
                 border-radius: 15px;
                 padding: 20px;
+            }
+            .alert {
+                border-radius: 12px;
+                font-size: 0.95rem;
             }
         </style>
     </head>
@@ -72,6 +77,16 @@ def index():
                     <canvas id="chart"></canvas>
                 </div>
             </div>
+        </div>
+
+        <div class="alert alert-info mt-4" id="help-box">
+            <strong>🔧 Connexion initiale du Pico W :</strong><br>
+            1. Branchez le Raspberry Pi Pico W.<br>
+            2. Installez <strong>nRF Connect</strong> sur votre téléphone.<br>
+            3. Recherchez l’appareil nommé <code>Pico_Config</code>.<br>
+            4. Connectez-vous et envoyez le SSID et mot de passe Wi-Fi.<br>
+            5. Le Pico W se connecte automatiquement au réseau.<br><br>
+            <div id="status-info">⏳ En attente de connexion...</div>
         </div>
     </div>
 
@@ -136,32 +151,46 @@ def index():
     });
 
     let history = [];
+
     async function update() {
         try {
             const response = await fetch('/latest');
             const data = await response.json();
 
-            document.getElementById('temp').innerHTML = `
-                ${data.temp.toFixed(1)}
-                <small class="fs-6">°C</small>
-            `;
+            // Mise à jour température
+            if (data.temp !== undefined) {
+                document.getElementById('temp').innerHTML = `
+                    ${data.temp.toFixed(1)}<small class="fs-6">°C</small>
+                `;
+                history.push(data.temp);
+                if(history.length > 120) history.shift();
 
-            history.push(data.temp);
-            if(history.length > 120) history.shift();
+                chart.data.labels = Array.from({length: history.length}, (_, i) => i);
+                chart.data.datasets[0].data = history;
+                chart.update();
+            }
 
-            chart.data.labels = Array.from({length: history.length}, (_, i) => i);
-            chart.data.datasets[0].data = history;
-            chart.update();
+            // Mise à jour statut
+            const statusText = {
+                "ble": "📶 En attente de configuration Wi-Fi via BLE...",
+                "wifi": "📡 Connecté au Wi-Fi, attente du capteur...",
+                "ok": "✅ Température à jour",
+                "erreur_capteur": "⚠️ Capteur non détecté (SPI)",
+                "unknown": "❓ État inconnu"
+            };
+            document.getElementById('status-info').innerHTML = statusText[data.status] || "❓ État non reconnu";
 
             document.getElementById('status').innerHTML = `
                 <i class="fas fa-check-circle text-success"></i>
                 MAJ: ${new Date().toLocaleTimeString()}
             `;
+
         } catch (error) {
             document.getElementById('status').innerHTML = `
                 <i class="fas fa-exclamation-triangle text-danger"></i>
                 Erreur de connexion
             `;
+            document.getElementById('status-info').innerHTML = "❌ Serveur injoignable ou Pico W hors ligne.";
         }
     }
 
@@ -177,15 +206,23 @@ def index():
 def post_temp():
     data = request.json
     temp = data.get("temp")
+    status = data.get("status", "unknown")
+    doc = {
+        "timestamp": datetime.utcnow(),
+        "status": status
+    }
     if temp is not None:
-        collection.insert_one({"temp": temp, "timestamp": datetime.utcnow()})
-        return jsonify({"status": "ok"}), 200
-    return jsonify({"error": "no temp"}), 400
+        doc["temp"] = temp
+    collection.insert_one(doc)
+    return jsonify({"status": "ok"}), 200
 
 @app.route("/latest", methods=["GET"])
 def latest_temp():
     doc = collection.find_one(sort=[("timestamp", -1)])
-    return jsonify({"temp": doc["temp"] if doc else 0})
+    return jsonify({
+        "temp": doc.get("temp", 0),
+        "status": doc.get("status", "unknown")
+    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
