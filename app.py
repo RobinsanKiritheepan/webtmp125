@@ -247,7 +247,7 @@ def latest_temp():
         last_time = last_time.replace(tzinfo=timezone.utc)
     age = (now - last_time).total_seconds()
 
-    if age > 60:
+    if age > 15:
         status = "offline"
     else:
         status = doc.get("status", "unknown")
