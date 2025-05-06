@@ -157,18 +157,6 @@ def index():
             const response = await fetch('/latest');
             const data = await response.json();
 
-            // Affichage température
-            if (data.temp !== null && data.temp !== undefined) {
-                document.getElementById('temp').innerHTML = `${data.temp.toFixed(1)}<small class="fs-6">°C</small>`;
-                history.push(data.temp);
-                if(history.length > 120) history.shift();
-
-                chart.data.labels = Array.from({length: history.length}, (_, i) => i);
-                chart.data.datasets[0].data = history;
-                chart.update();
-            }
-
-            // Affichage du statut
             const statusText = {
                 "ble": "📶 En attente de configuration Wi-Fi via BLE...",
                 "wifi": "📡 Connecté au Wi-Fi, attente du capteur...",
@@ -178,16 +166,44 @@ def index():
                 "erreur_capteur": "⚠️ Capteur non détecté (SPI)",
                 "unknown": "❓ État inconnu"
             };
-            document.getElementById('status-info').innerHTML = statusText[data.status] || "❓ État non reconnu";
 
-            document.getElementById('status').innerHTML = `
-                <i class="fas fa-check-circle text-success"></i>
-                MAJ: ${new Date().toLocaleTimeString()}
-            `;
+            const statusColor = {
+                "ok": "text-success",
+                "ble": "text-warning",
+                "wifi": "text-warning",
+                "erreur_capteur": "text-danger",
+                "offline": "text-danger",
+                "no_data": "text-warning",
+                "unknown": "text-secondary"
+            };
+
+            const status = data.status || "unknown";
+
+            // Température
+            if (status === "offline" || status === "no_data") {
+                document.getElementById('temp').innerHTML = "--";
+            } else if (data.temp !== null && data.temp !== undefined) {
+                document.getElementById('temp').innerHTML = `${data.temp.toFixed(1)}<small class="fs-6">°C</small>`;
+            }
+
+            // Graphique si capteur actif
+            if (status === "ok") {
+                history.push(data.temp);
+                if (history.length > 120) history.shift();
+                chart.data.labels = Array.from({ length: history.length }, (_, i) => i);
+                chart.data.datasets[0].data = history;
+                chart.update();
+            }
+
+            document.getElementById('status-info').innerHTML = statusText[status] || "❓ État non reconnu";
+
+            const statusEl = document.getElementById('status');
+            statusEl.innerHTML = `<i class="fas fa-circle me-1"></i> ${new Date().toLocaleTimeString()}`;
+            statusEl.className = `text-white-50 small ${statusColor[status] || ''}`;
+
         } catch (error) {
             document.getElementById('status').innerHTML = `
-                <i class="fas fa-exclamation-triangle text-danger"></i>
-                Erreur de connexion
+                <i class="fas fa-exclamation-triangle text-danger"></i> Erreur de connexion
             `;
             document.getElementById('status-info').innerHTML = "❌ Serveur injoignable ou Pico W hors ligne.";
         }
@@ -231,7 +247,7 @@ def latest_temp():
         last_time = last_time.replace(tzinfo=timezone.utc)
     age = (now - last_time).total_seconds()
 
-    if age > 20:
+    if age > 60:
         status = "offline"
     else:
         status = doc.get("status", "unknown")
