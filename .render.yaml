@@ -7,4 +7,4 @@ services:
     startCommand: "gunicorn app:app"
     envVars:
       - key: MONGO_URI
-        value: "mongodb+srv://kiritheepan:<db_password>@cluster0.sir3s.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+        value: "mongodb+srv://kiritheepan:kiri0508mdr@cluster0.sir3s.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
