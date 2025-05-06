@@ -1,11 +1,11 @@
 from flask import Flask, request, jsonify
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 app = Flask(__name__)
 
-# Connexion à MongoDB Atlas
+# Connexion MongoDB
 client = MongoClient(os.environ.get("MONGO_URI"))
 db = client["meteo"]
 collection = db["temperatures"]
@@ -175,6 +175,8 @@ def index():
                 "ble": "📶 En attente de configuration Wi-Fi via BLE...",
                 "wifi": "📡 Connecté au Wi-Fi, attente du capteur...",
                 "ok": "✅ Température à jour",
+                "offline": "❌ Capteur Pico déconnecté du réseau",
+                "no_data": "⚠️ Aucune donnée reçue encore",
                 "erreur_capteur": "⚠️ Capteur non détecté (SPI)",
                 "unknown": "❓ État inconnu"
             };
@@ -208,7 +210,7 @@ def post_temp():
     temp = data.get("temp")
     status = data.get("status", "unknown")
     doc = {
-        "timestamp": datetime.utcnow(),
+        "timestamp": datetime.now(timezone.utc),
         "status": status
     }
     if temp is not None:
@@ -219,9 +221,28 @@ def post_temp():
 @app.route("/latest", methods=["GET"])
 def latest_temp():
     doc = collection.find_one(sort=[("timestamp", -1)])
+    if not doc:
+        return jsonify({
+            "temp": None,
+            "status": "no_data",
+            "timestamp": None,
+            "age_seconds": None
+        })
+
+    now = datetime.now(timezone.utc)
+    last_time = doc.get("timestamp").replace(tzinfo=timezone.utc)
+    age = (now - last_time).total_seconds()
+
+    if age > 60:
+        status = "offline"
+    else:
+        status = doc.get("status", "unknown")
+
     return jsonify({
         "temp": doc.get("temp", 0),
-        "status": doc.get("status", "unknown")
+        "status": status,
+        "timestamp": last_time.isoformat(),
+        "age_seconds": age
     })
 
 if __name__ == "__main__":
