@@ -12,7 +12,7 @@ collection = db["temperatures"]
 
 @app.route("/", methods=["GET"])
 def index():
-    html = """
+    return """
     <!DOCTYPE html>
     <html lang="fr">
     <head>
@@ -157,11 +157,9 @@ def index():
             const response = await fetch('/latest');
             const data = await response.json();
 
-            // Mise à jour température
-            if (data.temp !== undefined) {
-                document.getElementById('temp').innerHTML = `
-                    ${data.temp.toFixed(1)}<small class="fs-6">°C</small>
-                `;
+            // Affichage température
+            if (data.temp !== null && data.temp !== undefined) {
+                document.getElementById('temp').innerHTML = `${data.temp.toFixed(1)}<small class="fs-6">°C</small>`;
                 history.push(data.temp);
                 if(history.length > 120) history.shift();
 
@@ -170,7 +168,7 @@ def index():
                 chart.update();
             }
 
-            // Mise à jour statut
+            // Affichage du statut
             const statusText = {
                 "ble": "📶 En attente de configuration Wi-Fi via BLE...",
                 "wifi": "📡 Connecté au Wi-Fi, attente du capteur...",
@@ -186,7 +184,6 @@ def index():
                 <i class="fas fa-check-circle text-success"></i>
                 MAJ: ${new Date().toLocaleTimeString()}
             `;
-
         } catch (error) {
             document.getElementById('status').innerHTML = `
                 <i class="fas fa-exclamation-triangle text-danger"></i>
@@ -202,7 +199,6 @@ def index():
     </body>
     </html>
     """
-    return html, 200, {'Content-Type': 'text/html'}
 
 @app.route("/temp", methods=["POST"])
 def post_temp():
@@ -230,10 +226,12 @@ def latest_temp():
         })
 
     now = datetime.now(timezone.utc)
-    last_time = doc.get("timestamp").replace(tzinfo=timezone.utc)
+    last_time = doc.get("timestamp", now)
+    if last_time.tzinfo is None:
+        last_time = last_time.replace(tzinfo=timezone.utc)
     age = (now - last_time).total_seconds()
 
-    if age > 60:
+    if age > 20:
         status = "offline"
     else:
         status = doc.get("status", "unknown")
