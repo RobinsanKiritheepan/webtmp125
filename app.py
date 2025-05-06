@@ -10,6 +10,169 @@ client = MongoClient(os.environ.get("MONGO_URI"))
 db = client["meteo"]
 collection = db["temperatures"]
 
+@app.route("/", methods=["GET"])
+def index():
+    html = """
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Dashboard Température</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+        <style>
+            body {
+                font-family: 'Segoe UI', sans-serif;
+                background: #0f0f0f;
+            }
+            .card-gradient {
+                background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+                border: none;
+                border-radius: 15px;
+                box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+                transition: transform 0.3s;
+            }
+            .card-gradient:hover {
+                transform: translateY(-5px);
+            }
+            .chart-container {
+                background: #1a1a1a;
+                border-radius: 15px;
+                padding: 20px;
+            }
+        </style>
+    </head>
+    <body>
+    <nav class="navbar navbar-dark bg-black mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-thermometer-half me-2"></i>Station Météo Pico W
+            </a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card card-gradient text-white">
+                    <div class="card-body text-center py-4">
+                        <h3 class="mb-3"><i class="fas fa-fire me-2"></i>Température Actuelle</h3>
+                        <div class="display-2 fw-bold mb-2" id="temp">--</div>
+                        <div class="text-white-50 small" id="status">
+                            <i class="fas fa-sync fa-spin"></i> Connexion...
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="chart-container">
+                    <canvas id="chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const ctx = document.getElementById('chart').getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(46, 204, 113, 0.6)');
+    gradient.addColorStop(1, 'rgba(46, 204, 113, 0.05)');
+
+    const chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Température (°C)',
+                data: [],
+                borderColor: '#2ecc71',
+                backgroundColor: gradient,
+                borderWidth: 3,
+                pointRadius: 0,
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0,0,0,0.9)',
+                    titleFont: { size: 16 },
+                    bodyFont: { size: 14 },
+                    callbacks: {
+                        title: (items) => `Temps: ${items[0].label}s`,
+                        label: (item) => `→ ${item.formattedValue}°C`
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#fff' },
+                    title: {
+                        display: true,
+                        text: 'Temps (secondes)',
+                        color: '#fff'
+                    }
+                },
+                y: {
+                    min: 0,
+                    max: 100,
+                    grid: { color: 'rgba(255,255,255,0.1)' },
+                    ticks: { color: '#fff' },
+                    title: {
+                        display: true,
+                        text: 'Température (°C)',
+                        color: '#fff'
+                    }
+                }
+            }
+        }
+    });
+
+    let history = [];
+    async function update() {
+        try {
+            const response = await fetch('/latest');
+            const data = await response.json();
+
+            document.getElementById('temp').innerHTML = `
+                ${data.temp.toFixed(1)}
+                <small class="fs-6">°C</small>
+            `;
+
+            history.push(data.temp);
+            if(history.length > 120) history.shift();
+
+            chart.data.labels = Array.from({length: history.length}, (_, i) => i);
+            chart.data.datasets[0].data = history;
+            chart.update();
+
+            document.getElementById('status').innerHTML = `
+                <i class="fas fa-check-circle text-success"></i>
+                MAJ: ${new Date().toLocaleTimeString()}
+            `;
+        } catch (error) {
+            document.getElementById('status').innerHTML = `
+                <i class="fas fa-exclamation-triangle text-danger"></i>
+                Erreur de connexion
+            `;
+        }
+    }
+
+    setInterval(update, 1000);
+    update();
+    </script>
+    </body>
+    </html>
+    """
+    return html, 200, {'Content-Type': 'text/html'}
+
 @app.route("/temp", methods=["POST"])
 def post_temp():
     data = request.json
